@@ -21,6 +21,12 @@
 
 需要支持油猴脚本的浏览器扩展，例如 [Tampermonkey](https://www.tampermonkey.net/) 。
 
+### 从 GitHub Release 安装
+
+打开[最新版 Release](https://github.com/paaroll/fuck-douyin_paarollfix/releases/latest) ，下载附件 `douyin-paarollfix.user.js`，也可以[直接下载最新版脚本](https://github.com/paaroll/fuck-douyin_paarollfix/releases/latest/download/douyin-paarollfix.user.js) 。
+
+如果浏览器弹出脚本管理器的安装页面，确认安装即可；如果只是下载了文件，按下面的步骤导入。GitHub 自动提供的 Source code 压缩包是源码，不是可直接安装的脚本。
+
 ### 从构建文件安装
 
 1. 用文本编辑器打开本分支生成的 `douyin-paarollfix.user.js`，复制全部内容。
