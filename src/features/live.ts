@@ -3,11 +3,14 @@
  * hover-and-click automation for the gift-effect / danmaku settings panels.
  */
 
+import { watch } from 'vue';
 import { config } from '@/config/store';
 
 const STYLE_ID = 'fd-live-style';
 const HIDDEN_CLASS = 'fd-live-hidden';
 const CHECK_MS = 1500;
+const GIFT_ROW_SELECTOR = ':is(#BottomLayout,.douyin-player-controls)>div:has(>.gitBarOptimizeEnabled)';
+const BLURRED_ATTRIBUTE = 'data-fd-live-blurred';
 const QUALITY_DELAY_MS = 5000;
 
 let timer: number | undefined;
@@ -23,6 +26,17 @@ function isLiveHost(): boolean {
 
 function enabled(key: string): boolean {
   return config.enabled && config.live[key] === true;
+}
+
+function canAutomateLiveControls(): boolean {
+  return config.enabled && (!enabled('hideControlsWhenBlurred') || document.hasFocus());
+}
+
+function syncLiveWindowFocus(): void {
+  document.documentElement.toggleAttribute(
+    BLURRED_ATTRIBUTE,
+    enabled('hideControlsWhenBlurred') && !document.hasFocus(),
+  );
 }
 
 function syncRoomState(): void {
@@ -43,10 +57,23 @@ function syncRoomState(): void {
 function css(): string {
   const rules: string[] = [];
 
+  if (enabled('hideControlsWhenBlurred')) {
+    rules.push(
+      `:root[${BLURRED_ATTRIBUTE}] :is(.douyin-player-controls,xg-controls,.xgplayer-controls,xg-inner-controls,.xg-inner-controls,#BottomLayout:not(:has(video))){opacity:0!important;visibility:hidden!important;pointer-events:none!important;transition:none!important;}`,
+    );
+  }
+
   if (enabled('removeGiftBar')) {
     rules.push(
-      '#BottomLayout{display:none!important;}',
-      '.xg-inner-controls{bottom:8px!important;}',
+      // Fullscreen moves the gift row out of BottomLayout and into the controls.
+      '#BottomLayout:not(:has(.gitBarOptimizeEnabled)):not(:has(video)),.gitBarOptimizeEnabled:not(:has(video)),[data-e2e="gifts-container"],[data-e2e="gift-panel"],[data-e2e="gift-bar"],#giftPanelEntrance{display:none!important;}',
+      `${GIFT_ROW_SELECTOR}:not(:has(>:not(.gitBarOptimizeEnabled))){display:none!important;}`,
+      // Keep a shared multi-camera entry usable while collapsing the gift row.
+      `${GIFT_ROW_SELECTOR}{height:auto!important;min-height:0!important;padding:0!important;}`,
+      `${GIFT_ROW_SELECTOR}>:not(.gitBarOptimizeEnabled){height:32px!important;min-height:0!important;}`,
+      '.douyin-player-controls:has(>div>.gitBarOptimizeEnabled){height:auto!important;}',
+      'xg-controls>div:has([data-e2e="gifts-container"]):not(:has(video)):not(:has(xg-inner-controls)){display:none!important;}',
+      'xg-inner-controls,.xg-inner-controls{bottom:8px!important;}',
     );
   }
 
@@ -132,6 +159,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function dispatchMouse(el: EventTarget, type: string, x: number, y: number): void {
+  if (!canAutomateLiveControls()) return;
   el.dispatchEvent(
     new MouseEvent(type, {
       view: window,
@@ -153,6 +181,7 @@ function simulateClick(el: Element): void {
 }
 
 function activatePlayer(player: HTMLElement): void {
+  if (!canAutomateLiveControls()) return;
   player.classList.remove('douyin-player-inactive');
   player.classList.add('douyin-player-active', 'douyin-player-focus');
 
@@ -178,8 +207,10 @@ async function openPanel(
   buttonSelector: string,
   panelSelector: string,
 ): Promise<HTMLElement | null> {
+  if (!canAutomateLiveControls()) return null;
   activatePlayer(player);
   await sleep(300);
+  if (!canAutomateLiveControls()) return null;
 
   const button = document.querySelector<HTMLElement>(buttonSelector);
   if (!button) return null;
@@ -198,8 +229,13 @@ async function openPanel(
   }
 
   await sleep(150);
+  if (!canAutomateLiveControls()) return null;
   simulateClick(button);
   const panel = await waitForElement<HTMLElement>(panelSelector, 1200);
+  if (!canAutomateLiveControls()) {
+    if (panel) closePanel(panel);
+    return null;
+  }
   panel?.style.removeProperty('display');
   return panel;
 }
@@ -209,7 +245,7 @@ function closePanel(panel: HTMLElement): void {
 }
 
 function clickOriginalQuality(): boolean {
-  if (!enabled('autoHD') || triedQuality) return false;
+  if (!canAutomateLiveControls() || !enabled('autoHD') || triedQuality) return false;
 
   const controls = document.querySelector('div.douyin-player-controls-right');
   if (!controls) return false;
@@ -265,6 +301,7 @@ async function setNamedToggle(
   label: string,
   desiredOn: boolean,
 ): Promise<SettingResult> {
+  if (!canAutomateLiveControls()) return 'panel-missing';
   const toggle = findToggle(panel, label);
   if (!toggle) return 'missing';
   if (isSwitchChecked(toggle) === desiredOn) return 'settled';
@@ -326,6 +363,7 @@ async function configureGiftPanel(player: HTMLElement): Promise<SettingResult> {
 }
 
 async function applyGiftSettings(): Promise<boolean> {
+  if (!canAutomateLiveControls()) return false;
   if (
     (!enabled('removeGiftAnim') &&
       !enabled('removeAdvancedDanmaku') &&
@@ -360,6 +398,7 @@ async function applyGiftSettings(): Promise<boolean> {
 
 function tick(): void {
   syncRoomState();
+  syncLiveWindowFocus();
   syncStyle();
   syncRoomInfoTags();
   clickOriginalQuality();
@@ -370,7 +409,19 @@ export function startLiveEngine(): void {
   if (timer !== undefined) return;
   if (!isLiveHost()) return;
 
+  syncLiveWindowFocus();
   syncStyle();
+  window.addEventListener('focus', syncLiveWindowFocus);
+  window.addEventListener('blur', syncLiveWindowFocus);
+  document.addEventListener('visibilitychange', syncLiveWindowFocus);
+  watch(
+    () => [config.enabled, config.live.removeGiftBar, config.live.hideControlsWhenBlurred],
+    () => {
+      syncLiveWindowFocus();
+      syncStyle();
+    },
+    { flush: 'sync' },
+  );
   window.setTimeout(() => {
     clickOriginalQuality();
   }, QUALITY_DELAY_MS);

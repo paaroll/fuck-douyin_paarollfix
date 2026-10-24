@@ -163,10 +163,17 @@ export const SCHEMA: ConfigGroup[] = [
     items: [
       {
         key: 'removeGiftBar',
-        label: '移除礼物滚动条',
-        desc: '隐藏顶部滚动的礼物横幅',
+        label: '屏蔽底部送礼栏',
+        desc: '普通和全屏播放持续隐藏，鼠标移动不弹出',
         default: true,
         icon: 'RiGiftLine',
+      },
+      {
+        key: 'hideControlsWhenBlurred',
+        label: '失焦时隐藏控制栏',
+        desc: '在其他窗口工作时收起底栏，切回后恢复',
+        default: true,
+        icon: 'RiShieldCheckLine',
       },
       {
         key: 'removeGiftAnim',

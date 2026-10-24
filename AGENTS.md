@@ -1,51 +1,30 @@
-# AGENTS.md
+# 项目规范
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+## 定位与来源
 
-## What this is
+本项目是 `wan-kong/fuck-douyin` 的独立维护分支，维护仓库为 `paaroll/fuck-douyin_paarollfix`。交付物是通过 Vue、TypeScript、Vite 和 vite-plugin-monkey 生成的油猴脚本，不是独立网站。保留原作者来源与 MIT 许可声明。
 
-A **Tampermonkey/Greasemonkey userscript** that "purifies" the Douyin web app (video player + livestream tweaks). Despite the Vue 3 + Vite stack, the build output is a single `.user.js` file (via `vite-plugin-monkey`), **not** a normal web app. The userscript runs injected into `www.douyin.com` / `live.douyin.com` pages (see `match` in `vite.config.ts`).
+## 目录与职责
 
-## Commands
+- `src/config/schema.ts` 是配置项、默认值和面板行的唯一来源。新增功能先在 schema 中增加字段；既有键已持久化，不能随意改名。
+- `src/config/store.ts` 合并旧配置与新默认值并保存；存储统一通过 `storage.ts`，优先 GM API，开发环境回退到 localStorage。配置键为 `fd_config`，浮动按钮位置键为 `fd_fab_pos`。
+- `src/features/live.ts` 实现直播间礼物栏、失焦控制栏和自动设置；`skip.ts`、`quality.ts`、`videoActions.ts` 分别维护既有信息流与播放器功能。
+- `src/main.ts` 将 UI 挂载到 `fd-root-box`，维护宿主页更新后的挂载状态；`App.vue` 与 `components/` 负责浮动面板。
+- `tests/` 使用 Node.js 测试运行器与 Playwright 验证构建后的完整脚本。测试夹具不访问真实抖音，也不操作用户账号。
+- `dist/` 是可重建的构建产物，不手工维护。`.tmp/` 仅供任务临时文件，不能成为运行依赖。
 
-- `pnpm dev` — Vite dev server. The panel renders in a plain browser; GM APIs are absent so it falls back to `localStorage` (see `src/config/storage.ts`).
-- `pnpm build` — `vue-tsc -b` typecheck **then** Vite build. Emits the userscript into `dist/`. There is no separate lint/test step; typechecking is the gate.
-- `pnpm preview` — preview the built output.
+## 工程边界
 
-Package manager is **pnpm** (see `pnpm-lock.yaml`). No test runner is configured.
+- 面板样式限定在 `.fd-root` 和 Vue scoped 样式。针对抖音 DOM 的样式由对应 feature 管理，不添加全局 reset。
+- 礼物栏通过持续生效的 CSS 隐藏，适配全屏容器搬移与动态创建；不能全局拦截鼠标或靠模拟移动鼠标隐藏。
+- 失焦判断使用窗口焦点，不用页面可见性代替。失焦隐藏开启时，自动设置不得模拟鼠标或点击；异步等待后必须重新检查。恢复焦点、关闭选项或总开关后恢复原控制行为，保持视频播放和布局。
+- 配置在 schema 中生成；Vue 是唯一运行时依赖，生产构建通过 CDN 引用。Playwright 仅为开发测试依赖。
+- 图标只在 `components/icons.ts` 中增加必要 SVG，不引入整套图标包。保持严格 TypeScript 检查，不引入 CSS 框架。
+- `package.json` 维护版本号；面板和用户脚本元信息应与其一致。主页、反馈和更新地址属于本分支，不能继续使用上游的发布地址。
 
-## Architecture
+## 工作流与文档
 
-### Schema-driven config (the core pattern)
-
-`src/config/schema.ts` is the single source of truth. Everything — the persisted data shape, the default values, and every row in the UI — is derived from the `SCHEMA` array. **To add a configurable feature, add one `ConfigItem` to the relevant group in `SCHEMA`**; a typed/defaulted/persisted flag and a panel row both appear automatically. Do not hand-add flags elsewhere.
-
-Config flow:
-- `schema.ts` — declares groups (`video`, `live`) and items; `createDefaultConfig()` builds defaults from it.
-- `store.ts` — `config` is a `reactive(hydrate())`. `hydrate()` deep-merges persisted values **over** schema defaults, keeping only schema-known keys (so adding a feature never wipes a user's existing choices, and removing one drops stale keys). A `deep` watcher auto-persists every change. `resetConfig()` / `activeCount()` are helpers.
-- `storage.ts` — `loadValue`/`saveValue` prefer `GM_getValue`/`GM_setValue`, fall back to `localStorage`. All persistence goes through here.
-
-Persisted under key `fd_config`; float-button position under `fd_fab_pos`. **`ConfigItem.key` values are persisted — never rename casually.**
-
-### Feature application is NOT implemented yet
-
-`schema.ts` describes *what* is configurable; the comment notes feature logic "lives elsewhere and reads `config[group][key]`". **That DOM-manipulation layer does not exist yet** — there is currently no `MutationObserver`/`querySelector` code that actually purifies Douyin. The repo today is the config model + floating UI only. When implementing a feature's effect, read the flag via the `config` reactive from `store.ts` and react to it.
-
-### UI
-
-- `src/main.ts` — mounts the app into a `<div id="fd-douyin-host">` appended to `<body>`. Styles are injected page-wide via `GM_addStyle`.
-- **Style isolation is deliberate and load-bearing**: all tokens and resets are scoped to `.fd-root` (see `src/style.css`), and component styles use Vue `scoped`. There is **no global reset** — never add styles that touch Douyin's own DOM, or you'll break the host page.
-- `App.vue` — owns the floating "dock": a draggable `FloatButton` + a `ConfigPanel` that springs from whichever screen corner the button currently sits in.
-- `useDraggable.ts` (`src/composables/`) — drag/clamp/persist for the launcher; a movement threshold distinguishes drag from tap (`wasDragged()`), and `placement` reports which corner the panel expands toward.
-- `ConfigPanel.vue` renders tabs and rows entirely from `SCHEMA`, binding each `ToggleRow`/`FdSwitch` to `config[group][key]`.
-
-### Icons
-
-`src/components/icons.ts` inlines only the ~16 Remix Icon SVG paths the UI uses. **Do not** add `@remixicon/vue` — its barrel doesn't tree-shake under the userscript build and bloats the bundle to 3MB+. When you reference a new `icon` name in `schema.ts`, add its inner SVG markup to `ICON_PATHS` too.
-
-### Other conventions
-
-- `@/` aliases `src/` (configured in `vite.config.ts` and the tsconfigs).
-- `vue` is an `externalGlobals` CDN dependency in the build — it is **not** bundled into the userscript.
-- **Styling is plain hand-written CSS** in `src/style.css` (scoped to `.fd-root`) plus Vue `scoped` styles. There is no Tailwind, no CSS framework, and no shadcn — `vue` is the only runtime dependency. Don't reintroduce a CSS framework. (`components.json` is a leftover shadcn-vue config file that nothing reads.)
-- TS is strict with `noUnusedLocals`/`noUnusedParameters` on — unused symbols fail the build.
+- 使用 pnpm 和锁文件。`pnpm build` 先执行类型检查，再生成脚本；`pnpm test` 构建后运行浏览器回归。浏览器准备方式见 README。
+- `README.md` 描述安装、迁移、功能与当前可用命令；`ROADMAP.md` 记录状态、验证和发布前事项；`CLAUDE.md` 只引用本文件。
+- 交付前检查实际 diff、构建、浏览器回归、公开元信息与许可，不把本机路径、日志、浏览器截图和临时材料放进发布包。
+- 提交、推送、打标签、创建 Release 和修改 CI/CD 均遵循用户本次明确授权范围；准备发布候选版不等于执行公开发布。

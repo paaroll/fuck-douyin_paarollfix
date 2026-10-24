@@ -5,6 +5,7 @@ import FdSwitch from './FdSwitch.vue';
 import FdIcon from './FdIcon.vue';
 import { config, resetConfig, activeCount } from '@/config/store';
 import { SCHEMA, type GroupId } from '@/config/schema';
+import { version } from '../../package.json';
 
 defineEmits<{ close: [] }>();
 
@@ -75,7 +76,7 @@ const activeGroup = computed(() => SCHEMA.find((g) => g.id === active.value)!);
         <FdIcon name="RiRefreshLine" :size="14" />
         <span>恢复默认</span>
       </button>
-      <span class="ver">v0.1.0</span>
+      <span class="ver">v{{ version }}</span>
     </footer>
   </div>
 </template>
